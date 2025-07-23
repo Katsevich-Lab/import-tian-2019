@@ -1,7 +1,9 @@
 #!/bin/bash
-SRR_IDS=(SRR8400805 SRR8400806 SRR8400807 SRR8400808)
 
-# Step 1: Setup directories and 
+# specify the cell type list
+cell_type_list=("iPSC" "iPSC-neuron")
+
+# Step 1: Setup directories and
 # Set the main directory using .research_config
 # Extract the path to LOCAL_TIAN_2019_RAW_DATA_DIR from .research_config
 MAIN_DIR=$(source ~/.research_config; echo $LOCAL_TIAN_2019_RAW_DATA_DIR)
@@ -21,7 +23,7 @@ mkdir -p "$RAW_DIR"
 PROCESSED_DIR="${MAIN_DIR}processed/"
 mkdir -p "$PROCESSED_DIR"
 
-# SCRACTH directory
+# SCRATCH directory
 FASTQ_DIR=$SCRATCH_DIR/Tian_2024/
 mkdir -p "$FASTQ_DIR"
 
@@ -50,59 +52,75 @@ fi
 REFDATA_DIR="${RAW_DIR}refdata-gex-GRCh38-2020-A/"
 
 # Step 3: Dump SRR files into FASTQ format (split mode) and ensure target directories exist
-for SRR_ID in "${SRR_IDS[@]}"; do
+for cell_type in "${cell_type_list[@]}"; do
+  mkdir -p "$PROCESSED_DIR/$cell_type"
 
-  # Dump SRR files into FASTQ format
-  if [ -d "$RAW_DIR$SRR_ID" ]; then
-    echo "Skipping Downloading $SRR_ID (folder exists)"
+  # Set SRR_IDS based on cell type
+  if [ "$cell_type" == "iPSC" ]; then
+    SRR_IDS=(SRR8400805 SRR8400806 SRR8400807 SRR8400808)
+  elif [ "$cell_type" == "iPSC-neuron" ]; then
+    SRR_IDS=(SRR8400813 SRR8400814 SRR8400815 SRR8400816)
   else
-    echo "\n=== Processing ${SRR_ID} ==="
-    cd "$RAW_DIR" || exit
-    prefetch $SRR_ID
-    fastq-dump --split-files "$RAW_DIR$SRR_ID" -O "$FASTQ_DIR$SRR_ID"
-    echo "${SRR_ID} Downloaded"
+    echo "Unknown cell type: $cell_type"
+    continue
   fi
 
-  # Run cellranger if necessary
-  if [ -d "$PROCESSED_DIR/$SRR_ID/outs" ]; then
-    echo "Skipping Processing $SRR_ID (folder exists)"
-  else
-  
-    # Rename FASTQ files to enable cellranger count
-    cd "$FASTQ_DIR$SRR_ID" || exit
-    if [ -f "${SRR_ID}_1.fastq" ]; then
-      mv "${SRR_ID}_1.fastq" "${SRR_ID}_S1_L001_R1_001.fastq"
-    else
-      echo "Warning: ${SRR_ID}_1.fastq not found!"
-    fi
-    if [ -f "${SRR_ID}_2.fastq" ]; then
-      mv "${SRR_ID}_2.fastq" "${SRR_ID}_S1_L001_R2_001.fastq"
-    else
-      echo "Warning: ${SRR_ID}_2.fastq not found!"
-    fi
-    if [ -f "${SRR_ID}_3.fastq" ]; then
-      mv "${SRR_ID}_3.fastq" "${SRR_ID}_S1_L001_I1_001.fastq"
-    else
-      echo "Warning: ${SRR_ID}_3.fastq not found!"
-    fi
-    
-    # set the directory to the PROCESSED_DIR
-    cd "$PROCESSED_DIR" || exit
-    cellranger count --id="${SRR_ID}" \
-                    --transcriptome="$REFDATA_DIR" \
-                    --fastqs="${FASTQ_DIR}${SRR_ID}" \
-                    --sample="${SRR_ID}" \
-                    --create-bam=false
-  fi
+  echo "Processing cell type: $cell_type"
 
-  # Deleting fastq files to save space if download succeeds
-  if [ -d "$PROCESSED_DIR$SRR_ID/outs" ]; then
-    rm ${FASTQ_DIR}${SRR_ID}/*.fastq
-    echo "${SRR_ID} processed"
-  else
-    echo "Cellranger failed for ${SRR_ID}"
-    rm -r "${PROCESSED_DIR}${SRR_ID}"
-  fi
+  for SRR_ID in "${SRR_IDS[@]}"; do
+
+    # Dump SRR files into FASTQ format
+    if [ -d "$RAW_DIR/$SRR_ID" ]; then
+      echo "Skipping Downloading $SRR_ID (folder exists)"
+    else
+      echo "\n=== Processing ${SRR_ID} ==="
+      cd "$RAW_DIR" || exit
+      prefetch $SRR_ID
+      fastq-dump --split-files "$RAW_DIR/$SRR_ID" -O "$FASTQ_DIR/$SRR_ID"
+      echo "${SRR_ID} Downloaded"
+    fi
+
+    # Run cellranger if necessary
+    if [ -d "$PROCESSED_DIR/$cell_type/$SRR_ID/outs" ]; then
+      echo "Skipping Processing $SRR_ID (folder exists)"
+    else
+
+      # Rename FASTQ files to enable cellranger count
+      cd "$FASTQ_DIR/$SRR_ID" || exit
+      if [ -f "${SRR_ID}_1.fastq" ]; then
+        mv "${SRR_ID}_1.fastq" "${SRR_ID}_S1_L001_R1_001.fastq"
+      else
+        echo "Warning: ${SRR_ID}_1.fastq not found!"
+      fi
+      if [ -f "${SRR_ID}_2.fastq" ]; then
+        mv "${SRR_ID}_2.fastq" "${SRR_ID}_S1_L001_R2_001.fastq"
+      else
+        echo "Warning: ${SRR_ID}_2.fastq not found!"
+      fi
+      if [ -f "${SRR_ID}_3.fastq" ]; then
+        mv "${SRR_ID}_3.fastq" "${SRR_ID}_S1_L001_I1_001.fastq"
+      else
+        echo "Warning: ${SRR_ID}_3.fastq not found!"
+      fi
+
+      # set the directory to the PROCESSED_DIR
+      cd "$PROCESSED_DIR/$cell_type" || exit
+      cellranger count --id="${SRR_ID}" \
+                      --transcriptome="$REFDATA_DIR" \
+                      --fastqs="${FASTQ_DIR}/${SRR_ID}" \
+                      --sample="${SRR_ID}" \
+                      --create-bam=false
+    fi
+
+    # Deleting fastq files to save space if download succeeds
+    if [ -d "$PROCESSED_DIR/$cell_type/$SRR_ID/outs" ]; then
+      rm ${FASTQ_DIR}/${SRR_ID}/*.fastq
+      echo "${SRR_ID} for cell type ${cell_type} processed"
+    else
+      echo "Cellranger failed for ${SRR_ID}, cell type ${cell_type}"
+      rm -r "${PROCESSED_DIR}/${cell_type}/${SRR_ID}"
+    fi
+  done
 done
 
 echo "All tasks completed successfully!"
